@@ -1,0 +1,1170 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="theme-color" content="#0b0e14">
+  <meta name="color-scheme" content="dark">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Channel Stream">
+  <link rel="apple-touch-icon" href="assets/icon-180.png">
+  <link rel="icon" type="image/png" href="assets/icon-180.png">
+  <link rel="manifest" href="manifest.webmanifest">
+  <title>Channel Stream · שידורים חיים</title>
+  <script src="https://cdn.jsdelivr.net/npm/hls.js@1.6.15"></script>
+  <script src="channels.js"></script>
+  <style>
+    :root {
+      --bg: #0b0e14;
+      --panel: rgba(22, 27, 34, 0.72);
+      --line: rgba(240, 246, 252, 0.10);
+      --text: #f0f6fc;
+      --muted: #8b949e;
+      --accent: #2f81f7;
+      --accent-2: #a371f7;
+      --live: #ff3b30;
+      --gold: #e3b341;
+      --radius: 16px;
+      --safe-t: env(safe-area-inset-top, 0px);
+      --safe-b: env(safe-area-inset-bottom, 0px);
+      --safe-l: env(safe-area-inset-left, 0px);
+      --safe-r: env(safe-area-inset-right, 0px);
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+    html, body { background: var(--bg); }
+    body {
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, "Noto Sans Hebrew", Arial, sans-serif;
+      min-height: 100dvh;
+      padding: calc(10px + var(--safe-t)) calc(12px + var(--safe-r)) calc(16px + var(--safe-b)) calc(12px + var(--safe-l));
+      background:
+        radial-gradient(1200px 600px at 85% -10%, rgba(47, 129, 247, 0.16), transparent 60%),
+        radial-gradient(900px 500px at 0% 110%, rgba(163, 113, 247, 0.12), transparent 60%),
+        var(--bg);
+      background-attachment: fixed;
+    }
+    button, input { font: inherit; color: inherit; }
+    button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+    [hidden] { display: none !important; }
+
+    .glass {
+      background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius);
+      backdrop-filter: blur(16px) saturate(140%); -webkit-backdrop-filter: blur(16px) saturate(140%);
+    }
+
+    .app { max-width: 1500px; margin: 0 auto; display: grid; gap: 12px; grid-template-columns: minmax(0, 1fr); }
+    @media (min-width: 1100px) {
+      .app.list-open { grid-template-columns: minmax(0, 1fr) 360px; }
+    }
+    .main { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+
+    /* ---------- top bar: favorites ---------- */
+    .topbar { display: flex; align-items: center; gap: 8px; padding: 8px; min-width: 0; }
+    .brand-logo {
+      width: 34px; height: 34px; border-radius: 9px; flex: none;
+      background: linear-gradient(135deg, var(--accent), var(--accent-2));
+      display: grid; place-items: center; font-weight: 800; font-size: 13px;
+    }
+    @media (max-width: 560px) { .brand-logo { display: none; } }
+    .favstrip {
+      flex: 1; min-width: 0; display: flex; gap: 6px; overflow-x: auto; scroll-snap-type: x proximity;
+      scrollbar-width: none; padding: 2px;
+    }
+    .favstrip::-webkit-scrollbar { display: none; }
+    .favbtn {
+      flex: none; width: 66px; display: flex; flex-direction: column; align-items: center; gap: 4px;
+      background: none; border: 0; cursor: pointer; padding: 4px 2px; border-radius: 12px; scroll-snap-align: start;
+      position: relative; transition: background .15s;
+    }
+    .favbtn:hover { background: rgba(255,255,255,0.06); }
+    .favbtn .logo { width: 50px; height: 50px; }
+    .favbtn.active .logo { box-shadow: 0 0 0 2.5px var(--accent), 0 6px 16px rgba(47,129,247,0.35); }
+    .favbtn .nm { font-size: 0.68rem; font-weight: 700; color: #c9d1d9; max-width: 64px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .favbtn.active .nm { color: var(--text); }
+    .favbtn .key { position: absolute; top: 2px; inset-inline-end: 4px; font-size: 0.6rem; color: var(--muted); font-weight: 800; }
+    @media (hover: none) { .favbtn .key { display: none; } }
+    .favbtn.add .logo { display: grid; place-items: center; font-size: 1.6rem; color: var(--muted); border: 1px dashed rgba(255,255,255,0.25); background: rgba(255,255,255,0.03); }
+    .bar-tools { display: flex; gap: 6px; flex: none; }
+
+    /* ---------- logos & badges ---------- */
+    .logo {
+      border-radius: 12px; flex: none; object-fit: cover; display: block; background: #fff;
+      box-shadow: inset 0 0 0 1px rgba(255,255,255,0.12);
+    }
+    .badge {
+      display: grid; place-items: center; font-weight: 800; font-size: 0.85rem; color: #fff;
+      background: var(--c, #30363d); background-image: linear-gradient(145deg, rgba(255,255,255,0.22), rgba(0,0,0,0.18));
+      text-shadow: 0 1px 2px rgba(0,0,0,0.35);
+    }
+    .offline .logo { filter: grayscale(1); opacity: 0.45; }
+
+    .icon-btn {
+      display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+      min-width: 40px; height: 40px; padding: 0 12px; border-radius: 12px; border: 1px solid var(--line);
+      background: rgba(255,255,255,0.05); cursor: pointer; font-size: 0.86rem; font-weight: 600; color: #c9d1d9;
+      transition: background .15s, color .15s, transform .1s; white-space: nowrap;
+    }
+    .icon-btn:hover { background: rgba(255,255,255,0.12); color: var(--text); }
+    .icon-btn:active { transform: scale(0.96); }
+    .icon-btn:disabled { opacity: 0.35; cursor: default; }
+    .icon-btn.on { color: var(--gold); border-color: rgba(227,179,65,0.45); }
+    .icon-btn.fav-on { color: #ff7b72; border-color: rgba(255,123,114,0.45); }
+    .icon-btn.pressed { background: var(--accent); color: #fff; border-color: var(--accent); }
+    .icon-btn svg { width: 18px; height: 18px; flex: none; }
+    .icon-btn .lbl { display: none; }
+    @media (min-width: 760px) { .icon-btn .lbl { display: inline; } }
+
+    /* ---------- player ---------- */
+    .player {
+      position: relative; width: 100%; aspect-ratio: 16 / 9; background: #000; border-radius: var(--radius);
+      overflow: hidden; border: 1px solid var(--line); box-shadow: 0 24px 60px rgba(0,0,0,0.55);
+      /* Keep the favorites bar and the now-playing bar on screen on wide windows. */
+      max-height: calc(100dvh - 210px - var(--safe-t) - var(--safe-b)); min-height: 180px;
+    }
+    .player-el { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; background: #000; }
+
+    /* Split screen: 1–4 tiles. Tile 0 is the large one in the 3-tile layout. */
+    .grid { position: absolute; inset: 0; display: grid; gap: 2px; background: #000; grid-template: 1fr / 1fr; }
+    .grid[data-layout="2"] { grid-template: 1fr / 1fr 1fr; }
+    .grid[data-layout="3"] { grid-template: 1fr 1fr / 2fr 1fr; }
+    .grid[data-layout="3"] .tile:first-child { grid-row: span 2; }
+    .grid[data-layout="4"] { grid-template: 1fr 1fr / 1fr 1fr; }
+    .tile { position: relative; min-width: 0; min-height: 0; overflow: hidden; background: #000; }
+    .tile .hit { position: absolute; inset: 0; z-index: 3; cursor: pointer; display: none; }
+    .split .tile .hit { display: block; }
+    .split .tile.embed .hit { display: none; } /* Mako's own controls must stay clickable */
+    .split .tile.focused::after {
+      content: ""; position: absolute; inset: 0; z-index: 7; pointer-events: none;
+      box-shadow: inset 0 0 0 3px var(--accent);
+    }
+    .tile-label {
+      position: absolute; bottom: 8px; inset-inline-start: 8px; z-index: 8; display: none; align-items: center; gap: 6px;
+      max-width: calc(100% - 16px); background: rgba(0,0,0,0.6); color: #fff; border: 0; border-radius: 999px;
+      padding: 4px 10px; font-size: 0.74rem; font-weight: 700; cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    .split .tile-label { display: inline-flex; }
+    .split .tile.focused .tile-label { background: var(--accent); }
+    .split .status { font-size: 0.8rem; gap: 8px; }
+    .split .spinner { width: 26px; height: 26px; }
+    .layout-wrap { position: relative; }
+    .layout-menu {
+      position: absolute; top: calc(100% + 8px); inset-inline-end: 0; z-index: 40; display: flex; flex-direction: column; gap: 2px;
+      padding: 6px; min-width: 190px; border-radius: 14px; background: rgba(22,27,34,0.97); border: 1px solid var(--line);
+      box-shadow: 0 16px 40px rgba(0,0,0,0.5);
+    }
+    .layout-menu button {
+      display: flex; align-items: center; gap: 10px; background: none; border: 0; padding: 8px 10px; border-radius: 9px;
+      cursor: pointer; font-size: 0.86rem; font-weight: 600; color: #c9d1d9; text-align: start;
+    }
+    .layout-menu button:hover { background: rgba(255,255,255,0.08); color: var(--text); }
+    .layout-menu button.on { color: var(--accent); }
+    .layout-menu svg { width: 22px; height: 16px; flex: none; }
+    video.player-el { object-fit: contain; }
+    .status {
+      position: absolute; inset: 0; display: none; z-index: 4; flex-direction: column; align-items: center; justify-content: center;
+      gap: 14px; color: #c9d1d9; font-size: 0.95rem; text-align: center; padding: 20px;
+      background: radial-gradient(circle at center, rgba(0,0,0,0.25), rgba(0,0,0,0.65)); pointer-events: none;
+    }
+    .status.show { display: flex; }
+    .status.error { pointer-events: auto; }
+    .spinner { width: 38px; height: 38px; border-radius: 50%; border: 3px solid rgba(255,255,255,0.15); border-top-color: #fff; animation: spin .9s linear infinite; }
+    .status.error .spinner { display: none; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .unmute {
+      position: absolute; top: 14px; inset-inline-start: 14px; z-index: 6; display: none; align-items: center; gap: 8px;
+      background: rgba(22,27,34,0.88); border: 1px solid var(--line); padding: 10px 16px; border-radius: 12px;
+      font-weight: 700; font-size: 0.9rem; cursor: pointer; backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+      animation: bob 2.2s ease-in-out infinite;
+    }
+    .unmute.show { display: inline-flex; }
+    .unmute:hover { background: var(--accent); }
+    @keyframes bob { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-4px); } }
+
+    /* ---------- now playing ---------- */
+    .now { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; padding: 10px 12px; }
+    .now-info { display: flex; align-items: center; gap: 12px; min-width: 0; flex: 1 1 240px; max-width: 100%; }
+    .now-info .logo { width: 44px; height: 44px; }
+    .now-text { display: flex; flex-direction: column; min-width: 0; }
+    .now-name { font-weight: 800; font-size: 1.12rem; display: flex; align-items: center; gap: 8px; }
+    .now-src { color: var(--muted); font-size: 0.76rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .live-dot { width: 9px; height: 9px; border-radius: 50%; background: var(--live); flex: none; box-shadow: 0 0 10px var(--live); animation: pulse 1.6s infinite; }
+    @keyframes pulse { 0%,100% { opacity: 1; transform: scale(1); } 50% { opacity: .35; transform: scale(1.25); } }
+    .now-actions { display: flex; gap: 6px; flex-wrap: wrap; max-width: 100%; }
+
+    .vol { display: inline-flex; align-items: center; gap: 4px; }
+    .vol input[type=range] { width: 90px; accent-color: var(--accent); cursor: pointer; }
+    .icon-btn.muted { color: #ff7b72; }
+
+    /* ---------- channel list panel ---------- */
+    .list { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+    @media (min-width: 1100px) {
+      .list { position: sticky; top: calc(10px + var(--safe-t)); max-height: calc(100dvh - 26px - var(--safe-t) - var(--safe-b)); overflow: auto; }
+    }
+    @media (max-width: 1099px) {
+      /* Small screens: the list slides over the page from the side. */
+      .list {
+        position: fixed; z-index: 30; top: 0; bottom: 0; inset-inline-end: 0; width: min(380px, 92vw); overflow: auto;
+        padding: calc(12px + var(--safe-t)) 12px calc(16px + var(--safe-b)); background: rgba(11,14,20,0.97);
+        border-inline-start: 1px solid var(--line); box-shadow: -20px 0 40px rgba(0,0,0,0.5);
+      }
+      .scrim { position: fixed; inset: 0; z-index: 29; background: rgba(0,0,0,0.5); }
+    }
+    .section { padding: 14px; }
+    .section-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 10px; }
+    .section-title { font-weight: 800; font-size: 0.98rem; }
+    .count { color: var(--muted); font-weight: 600; font-size: 0.8rem; }
+    .text-btn { background: none; border: 0; color: var(--accent); font-weight: 700; font-size: 0.85rem; cursor: pointer; padding: 6px 8px; border-radius: 8px; }
+    .text-btn:hover { background: rgba(47,129,247,0.12); }
+    .search {
+      width: 100%; height: 40px; border-radius: 12px; border: 1px solid var(--line); background: rgba(1,4,9,0.55);
+      padding: 0 14px; font-size: 0.92rem; margin-bottom: 10px;
+    }
+    .search::placeholder { color: #6e7681; }
+    .chips { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 8px; }
+    .chip { border: 1px solid var(--line); background: rgba(255,255,255,0.04); color: #c9d1d9; border-radius: 999px; padding: 5px 12px; font-size: 0.8rem; font-weight: 600; cursor: pointer; }
+    .chip.on { background: var(--accent); border-color: var(--accent); color: #fff; }
+    .group-title { color: var(--muted); font-size: 0.74rem; font-weight: 800; letter-spacing: .6px; margin: 12px 4px 6px; }
+    .row { display: flex; align-items: center; gap: 10px; padding: 7px; border-radius: 12px; cursor: pointer; transition: background .12s; }
+    .row:hover { background: rgba(255,255,255,0.05); }
+    .row.active { background: rgba(47,129,247,0.14); }
+    .row .logo { width: 38px; height: 38px; border-radius: 10px; }
+    .row-text { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+    .row-name { font-weight: 700; font-size: 0.9rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .row-sub { color: var(--muted); font-size: 0.73rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .row.offline .row-sub { color: #d29922; }
+    .row-star { color: var(--gold); font-size: 0.85rem; }
+    .row-btn {
+      flex: none; height: 30px; min-width: 30px; padding: 0 10px; border-radius: 9px; border: 1px solid var(--line);
+      background: rgba(255,255,255,0.05); cursor: pointer; font-size: 0.78rem; font-weight: 700; color: #c9d1d9;
+    }
+    .row-btn:hover { background: var(--accent); color: #fff; border-color: var(--accent); }
+    .row-btn.danger:hover { background: rgba(248,81,73,0.5); border-color: transparent; }
+    .row-btn:disabled { opacity: .3; cursor: default; background: none; color: inherit; }
+    .empty { color: var(--muted); font-size: 0.85rem; padding: 10px 4px; text-align: center; }
+    .hint { color: #6e7681; font-size: 0.74rem; line-height: 1.6; padding: 0 4px; }
+    .hint kbd { font-family: ui-monospace, Menlo, monospace; font-size: 0.7rem; border: 1px solid var(--line); border-bottom-width: 2px; border-radius: 5px; padding: 0 5px; }
+    @media (hover: none) { .hint.keys { display: none; } }
+    .settings label { display: block; font-size: 0.8rem; color: var(--muted); margin: 8px 0 4px; }
+    .settings .search { margin-bottom: 6px; font-size: 0.8rem; direction: ltr; }
+    .btn-row { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 6px; }
+
+    /* add-channel dialog */
+    dialog {
+      margin: auto; border: 1px solid var(--line); border-radius: 18px; background: #161b22; color: var(--text);
+      padding: 20px; width: min(440px, 92vw); box-shadow: 0 30px 80px rgba(0,0,0,0.6);
+    }
+    dialog::backdrop { background: rgba(0,0,0,0.55); }
+    dialog h2 { font-size: 1.1rem; margin-bottom: 12px; }
+    dialog label { display: block; font-size: 0.82rem; color: var(--muted); margin: 10px 0 4px; }
+    dialog .err { color: #ff7b72; font-size: 0.8rem; min-height: 1.2em; margin-top: 6px; }
+    dialog .btn-row { justify-content: flex-start; margin-top: 14px; }
+
+    .toast {
+      position: fixed; left: 50%; bottom: calc(22px + var(--safe-b)); transform: translate(-50%, 20px);
+      background: rgba(22,27,34,0.95); border: 1px solid var(--line); padding: 10px 16px; border-radius: 12px;
+      font-size: 0.88rem; font-weight: 600; box-shadow: 0 12px 30px rgba(0,0,0,0.5); opacity: 0; pointer-events: none;
+      transition: opacity .2s, transform .2s; z-index: 50;
+    }
+    .toast.show { opacity: 1; transform: translate(-50%, 0); }
+    @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }
+  </style>
+</head>
+<body>
+  <div class="app" id="app">
+    <div class="main">
+      <!-- Favorites along the top: the everyday way to switch channels. -->
+      <header class="topbar glass" aria-label="ערוצים מועדפים">
+        <div class="brand-logo" aria-hidden="true">TV</div>
+        <nav class="favstrip" id="favstrip"></nav>
+        <div class="bar-tools">
+          <button class="icon-btn" id="prevBtn" title="הערוץ הקודם (0)" aria-label="הערוץ הקודם" disabled>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 14l-5-5 5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/></svg>
+          </button>
+          <span class="layout-wrap" id="layoutWrap" hidden>
+            <button class="icon-btn" id="layoutBtn" title="מסך מפוצל: 1–4 ערוצים" aria-haspopup="true" aria-expanded="false">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M12 4v16M3 12h18"/></svg>
+            </button>
+            <div class="layout-menu" id="layoutMenu" role="menu" hidden></div>
+          </span>
+          <button class="icon-btn" id="listBtn" title="כל הערוצים (L)" aria-expanded="false" aria-controls="list">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M8 6h13M8 12h13M8 18h13M3.5 6h.01M3.5 12h.01M3.5 18h.01"/></svg>
+            <span class="lbl">כל הערוצים</span>
+          </button>
+        </div>
+      </header>
+
+      <div class="player" id="player">
+        <div class="grid" id="grid" data-layout="1"></div>
+      </div>
+
+      <section class="now glass" aria-label="משדר כעת">
+        <div class="now-info">
+          <span id="nowLogo"></span>
+          <div class="now-text">
+            <span class="now-name"><span class="live-dot" aria-hidden="true"></span><span id="nowName">—</span></span>
+            <span class="now-src" id="nowSrc"></span>
+          </div>
+        </div>
+        <div class="now-actions">
+          <span class="vol">
+            <button class="icon-btn" id="muteBtn" title="השתקה (M)" aria-label="השתקה" aria-pressed="false">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 5L6 9H3v6h3l5 4z" fill="currentColor"/><path id="muteWaves" d="M15.5 8.5a5 5 0 0 1 0 7M18.5 5.5a9 9 0 0 1 0 13"/><path id="muteX" d="M16 9l6 6M22 9l-6 6" hidden/></svg>
+            </button>
+            <input type="range" id="volume" min="0" max="1" step="0.05" aria-label="עוצמת שמע" title="עוצמת שמע (↑/↓)">
+          </span>
+          <button class="icon-btn" id="favBtn" title="הוספה/הסרה מהמועדפים">
+            <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 20.5s-7.5-4.6-10-9.3C.4 7.9 2.3 4 6 4c2.1 0 3.4 1.1 4.1 2.2h3.8C14.6 5.1 15.9 4 18 4c3.7 0 5.6 3.9 4 7.2-2.5 4.7-10 9.3-10 9.3z"/></svg>
+            <span class="lbl" id="favLbl">למועדפים</span>
+          </button>
+          <button class="icon-btn" id="defaultBtn" title="ערוץ שיופעל בפתיחת הדף">
+            <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2.5l2.9 6 6.6.9-4.8 4.6 1.2 6.5L12 17.4l-5.9 3.1 1.2-6.5L2.5 9.4l6.6-.9z"/></svg>
+            <span class="lbl" id="defaultLbl">קבע כברירת מחדל</span>
+          </button>
+          <button class="icon-btn" id="pipBtn" title="תמונה בתוך תמונה (P)" hidden>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><rect x="2.5" y="4.5" width="19" height="15" rx="2.5"/><rect x="12" y="11" width="7" height="6" rx="1.2" fill="currentColor"/></svg>
+            <span class="lbl">PiP</span>
+          </button>
+          <button class="icon-btn" id="airplayBtn" title="AirPlay" hidden>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M5 17H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2h-1"/><path d="M12 15l5 6H7z" fill="currentColor"/></svg>
+            <span class="lbl">AirPlay</span>
+          </button>
+          <button class="icon-btn" id="fsBtn" title="מסך מלא (F)">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg>
+            <span class="lbl">מסך מלא</span>
+          </button>
+          <button class="icon-btn" id="reloadBtn" title="רענון שידור (R)">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-3-6.7L21 8"/><path d="M21 3v5h-5"/></svg>
+            <span class="lbl">רענון</span>
+          </button>
+        </div>
+      </section>
+    </div>
+
+    <div class="scrim" id="scrim" hidden></div>
+
+    <!-- Full channel list: manage favorites, browse everything, add your own channel. -->
+    <aside class="list" id="list" aria-label="כל הערוצים" hidden>
+      <section class="section glass" aria-labelledby="favTitle">
+        <div class="section-head">
+          <span class="section-title" id="favTitle">⭐ המועדפים שלי <span class="count" id="favCount"></span></span>
+          <button class="text-btn" id="closeListBtn">סגירה</button>
+        </div>
+        <div id="favList"></div>
+      </section>
+
+      <section class="section glass" aria-labelledby="othersTitle">
+        <div class="section-head">
+          <span class="section-title" id="othersTitle">📺 ערוצים נוספים <span class="count" id="othersCount"></span></span>
+          <button class="text-btn" id="addChannelBtn">+ ערוץ משלי</button>
+        </div>
+        <input class="search" id="search" type="search" placeholder="חיפוש ערוץ… (Kan, Bloomberg, חדשות)" autocomplete="off" aria-label="חיפוש ערוץ">
+        <div class="chips" id="chips" role="toolbar" aria-label="סינון לפי קבוצה"></div>
+        <div id="others"></div>
+      </section>
+
+      <section class="section glass settings" aria-labelledby="setTitle">
+        <div class="section-head"><span class="section-title" id="setTitle">⚙️ הגדרות</span></div>
+        <label for="catalogUrl">כתובת רשימת הערוצים המקוונת</label>
+        <input class="search" id="catalogUrl" type="url" spellcheck="false" autocomplete="off">
+        <div class="hint" id="catalogStatus"></div>
+        <div class="btn-row">
+          <button class="icon-btn" id="catalogCheckBtn">בדיקת עדכונים</button>
+          <button class="icon-btn" id="resetBtn">איפוס העדפות</button>
+        </div>
+      </section>
+
+      <p class="hint keys">קיצורים: <kbd>1</kbd>–<kbd>9</kbd> מועדפים · <kbd>0</kbd> הערוץ הקודם · <kbd>←</kbd>/<kbd>→</kbd> הבא/קודם · <kbd>Space</kbd> ניגון/השהיה · <kbd>M</kbd> השתקה · <kbd>↑</kbd>/<kbd>↓</kbd> עוצמה · <kbd>F</kbd> מסך מלא · <kbd>P</kbd> PiP · <kbd>R</kbd> רענון · <kbd>L</kbd> כל הערוצים · <kbd>⌥1</kbd>–<kbd>⌥4</kbd> מסך מפוצל · <kbd>/</kbd> חיפוש</p>
+      <p class="hint">ההעדפות נשמרות בדפדפן זה. ערוצים שלא נפתחו מסומנים "לא זמין" לכמה שעות ומדולגים במעבר ערוצים. חלק מהשידורים זמינים רק מישראל או מחוצה לה.</p>
+    </aside>
+  </div>
+
+  <dialog id="addDialog" aria-labelledby="addTitle">
+    <form method="dialog" id="addForm">
+      <h2 id="addTitle">הוספת ערוץ משלי</h2>
+      <label for="addName">שם הערוץ</label>
+      <input class="search" id="addName" required maxlength="40" autocomplete="off">
+      <label for="addUrl">כתובת השידור (m3u8)</label>
+      <input class="search" id="addUrl" type="url" required placeholder="https://example.com/live/index.m3u8" dir="ltr" autocomplete="off">
+      <div class="err" id="addErr" role="alert"></div>
+      <div class="btn-row">
+        <button class="icon-btn pressed" value="add" id="addSubmit">הוספה</button>
+        <button class="icon-btn" value="cancel" formnovalidate>ביטול</button>
+      </div>
+    </form>
+  </dialog>
+
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+  <script>
+  (() => {
+    'use strict';
+
+    // ---------- catalog ----------
+    const BUNDLED = window.CHANNEL_CATALOG;
+    if (!BUNDLED) {
+      document.body.innerHTML = '<p style="padding:40px;text-align:center">channels.js לא נטען. ודאו שהקובץ נמצא לצד index.html.</p>';
+      return;
+    }
+    const DEFAULT_REMOTE = 'https://idansaar.github.io/channel-stream-web/channels.json';
+    const LEGACY_REMOTE = 'https://raw.githubusercontent.com/idansaar/channel-stream/main/channels.json';
+    const CACHE_KEY = 'channelStream.catalog.v1';
+    const PREF_KEY = 'channelStream.prefs.v1';
+    const FAIL_KEY = 'channelStream.offline.v1';
+    const COOKIE = 'cs_prefs';
+    const OFFLINE_MS = 6 * 3600 * 1000;
+    const CUSTOM_GROUP = { id: 'custom', name: 'הערוצים שלי', nameEn: 'My Channels' };
+    const LANG = { he: 'עברית', en: 'English', ar: 'عربي', ru: 'Русский', fr: 'Français' };
+
+    function isUsable(c) {
+      return c && Array.isArray(c.channels) && c.channels.length && Array.isArray(c.groups) &&
+        c.channels.some(ch => ch.id === c.defaultChannel);
+    }
+    function loadCachedCatalog() {
+      try {
+        const c = JSON.parse(localStorage.getItem(CACHE_KEY) || 'null');
+        return c && isUsable(c.catalog) && c.catalog.version > BUNDLED.version ? c : null;
+      } catch { return null; }
+    }
+    // A cached online catalog (if newer than the bundled one) wins. `base` resolves its logo paths.
+    const cached = loadCachedCatalog();
+    let CAT = cached ? cached.catalog : BUNDLED;
+    let catalogBase = cached ? cached.base : null;
+
+    // ---------- preferences (localStorage, basics mirrored to a cookie) ----------
+    function readCookie() {
+      const m = document.cookie.match(new RegExp('(?:^|; )' + COOKIE + '=([^;]*)'));
+      if (!m) return null;
+      try { return JSON.parse(decodeURIComponent(m[1])); } catch { return null; }
+    }
+    function readPrefs() {
+      try { const p = JSON.parse(localStorage.getItem(PREF_KEY) || 'null'); if (p) return p; } catch { /* storage blocked */ }
+      return readCookie();
+    }
+    let prefs = readPrefs() || {};
+
+    let byId = new Map();
+    let channels = [];
+    function customToChannel(c) {
+      const letters = (c.name.match(/[\p{L}\p{N}]/gu) || []).slice(0, 2).join('').toUpperCase();
+      return { id: c.id, name: c.name, nameEn: c.name, short: letters || 'TV', color: '#6e7681',
+               group: CUSTOM_GROUP.id, lang: '', type: 'hls', urls: [c.url], custom: true };
+    }
+    function rebuild() {
+      channels = [...CAT.channels, ...(prefs.custom || []).map(customToChannel)];
+      byId = new Map(channels.map(c => [c.id, c]));
+      const favs = Array.isArray(prefs.favorites) ? prefs.favorites.filter(id => byId.has(id)) : [...CAT.defaultFavorites];
+      prefs = {
+        favorites: [...new Set(favs)],
+        defaultChannel: byId.has(prefs.defaultChannel) ? prefs.defaultChannel : CAT.defaultChannel,
+        group: typeof prefs.group === 'string' ? prefs.group : 'all',
+        volume: typeof prefs.volume === 'number' ? Math.min(1, Math.max(0, prefs.volume)) : 1,
+        custom: Array.isArray(prefs.custom) ? prefs.custom : [],
+        catalogUrl: typeof prefs.catalogUrl === 'string' && prefs.catalogUrl !== LEGACY_REMOTE ? prefs.catalogUrl : DEFAULT_REMOTE,
+        listOpen: !!prefs.listOpen,
+        layout: 1,
+        split: Array.isArray(prefs.split) ? prefs.split.filter(x => typeof x === 'string') : []
+      };
+    }
+    const groups = () => [...CAT.groups, ...(prefs.custom.length ? [CUSTOM_GROUP] : [])];
+
+    function savePrefs() {
+      try { localStorage.setItem(PREF_KEY, JSON.stringify(prefs)); } catch { /* ignore */ }
+      // Cookies are small (4 KB), so only the basics go there; custom channels live in localStorage.
+      const basic = { favorites: prefs.favorites, defaultChannel: prefs.defaultChannel, group: prefs.group, volume: prefs.volume };
+      document.cookie = COOKIE + '=' + encodeURIComponent(JSON.stringify(basic)) + '; max-age=31536000; path=/; SameSite=Lax';
+    }
+
+    // Channels that failed recently: greyed out and skipped by next/previous.
+    let failures = {};
+    try { failures = JSON.parse(localStorage.getItem(FAIL_KEY) || '{}') || {}; } catch { failures = {}; }
+    const isOffline = id => failures[id] && Date.now() - failures[id] < OFFLINE_MS;
+    function setOffline(id, off) {
+      if (off) failures[id] = Date.now(); else if (!failures[id]) return; else delete failures[id];
+      try { localStorage.setItem(FAIL_KEY, JSON.stringify(failures)); } catch { /* ignore */ }
+      renderAll();
+    }
+
+    // ---------- elements & state ----------
+    const $ = id => document.getElementById(id);
+    const searchEl = $('search'), listEl = $('list'), app = $('app'), grid = $('grid');
+
+    // `video` and `current` always refer to the focused tile (the one with the sound).
+    let video = null, current = null;
+    let tiles = [], focusIndex = 0, layout = 1, airplayAvailable = false;
+    // ---------- helpers ----------
+    function logoURL(ch) {
+      if (!ch.logo) return null;
+      if (/^https?:/.test(ch.logo)) return ch.logo;
+      return catalogBase ? new URL(ch.logo, catalogBase).href : ch.logo;
+    }
+    /** Channel logo image, falling back to a colored badge if there is none or it fails to load. */
+    function logo(ch, size) {
+      const badge = () => {
+        const b = document.createElement('div');
+        b.className = 'logo badge';
+        b.style.cssText = `width:${size}px;height:${size}px;--c:${ch.color || '#30363d'};font-size:${Math.round(size * 0.32)}px`;
+        b.textContent = ch.short || ch.name.slice(0, 2);
+        b.setAttribute('aria-hidden', 'true');
+        return b;
+      };
+      const src = logoURL(ch);
+      if (!src) return badge();
+      const img = document.createElement('img');
+      img.className = 'logo'; img.alt = ''; img.width = size; img.height = size; img.loading = 'lazy'; img.decoding = 'async';
+      img.src = src;
+      img.addEventListener('error', () => {
+        // Logo from an online catalog that isn't next to this page: try the copy next to the catalog.
+        if (!catalogBase && ch.logo && !/^https?:/.test(ch.logo) && !img.dataset.retried && prefs.catalogUrl) {
+          img.dataset.retried = '1';
+          img.src = new URL(ch.logo, prefs.catalogUrl).href;
+        } else img.replaceWith(badge());
+      });
+      return img;
+    }
+
+    let toastTimer;
+    function toast(msg) {
+      const t = $('toast');
+      t.textContent = msg; t.classList.add('show');
+      clearTimeout(toastTimer); toastTimer = setTimeout(() => t.classList.remove('show'), 1900);
+    }
+    // ---------- tiles & playback ----------
+    // Every tile has its own <video> (native HLS in Safari, hls.js elsewhere) and <iframe> (Keshet 12).
+    // Single view uses tile 0. In split screen only the focused tile has sound.
+    const SPLIT_MIN_WIDTH = 900;
+    const LAYOUTS = [
+      { n: 1, name: 'ערוץ אחד', icon: '<rect x="1" y="1" width="20" height="14" rx="2"/>' },
+      { n: 2, name: 'שניים זה לצד זה', icon: '<rect x="1" y="1" width="20" height="14" rx="2"/><path d="M11 1v14"/>' },
+      { n: 3, name: 'אחד גדול ושניים קטנים', icon: '<rect x="1" y="1" width="20" height="14" rx="2"/><path d="M14 1v14M14 8h7"/>' },
+      { n: 4, name: 'ארבעה (2×2)', icon: '<rect x="1" y="1" width="20" height="14" rx="2"/><path d="M11 1v14M1 8h20"/>' }
+    ];
+    const isSplit = () => layout > 1;
+    const focusedTile = () => tiles[focusIndex];
+    const splitAllowed = () => matchMedia('(min-width: ' + SPLIT_MIN_WIDTH + 'px)').matches;
+
+    class Tile {
+      constructor(index) {
+        this.index = index; this.ch = null; this.prevId = null; this.hls = null; this.urlIndex = 0; this.loadTimer = null;
+        const el = this.el = document.createElement('div');
+        el.className = 'tile';
+        el.innerHTML = `
+          <iframe class="player-el" title="נגן וידאו" allow="autoplay; fullscreen; picture-in-picture; encrypted-media" hidden></iframe>
+          <video class="player-el" playsinline autopictureinpicture x-webkit-airplay="allow" hidden></video>
+          <div class="hit"></div>
+          <div class="status" role="status" aria-live="polite">
+            <div class="spinner" aria-hidden="true"></div><div class="status-text">טוען שידור...</div>
+            <button class="icon-btn retry" hidden>נסו שוב ⟳</button>
+          </div>
+          <button class="unmute">🔇 השידור מושתק — הקישו להפעלת שמע 🔊</button>
+          <button class="tile-label" type="button"></button>`;
+        this.iframe = el.querySelector('iframe');
+        this.video = el.querySelector('video');
+        this.status = el.querySelector('.status');
+        this.statusText = el.querySelector('.status-text');
+        this.retry = el.querySelector('.retry');
+        this.unmute = el.querySelector('.unmute');
+        this.label = el.querySelector('.tile-label');
+        const v = this.video;
+
+        // Click a tile to give it the sound, double-click to watch it alone.
+        const hit = el.querySelector('.hit');
+        hit.addEventListener('click', () => focusTile(this.index));
+        hit.addEventListener('dblclick', () => expandTile(this.index));
+        this.label.addEventListener('click', () => focusTile(this.index));
+        this.label.addEventListener('dblclick', () => expandTile(this.index));
+        this.retry.addEventListener('click', () => this.reload());
+        this.unmute.addEventListener('click', () => { v.muted = false; this.unmute.classList.remove('show'); v.play().catch(() => {}); });
+
+        v.addEventListener('playing', () => { clearTimeout(this.loadTimer); this.setStatus(null); if (this.ch) setOffline(this.ch.id, false); });
+        v.addEventListener('waiting', () => { if (!v.paused) this.setStatus('טוען...'); });
+        v.addEventListener('volumechange', () => {
+          if (!this.focused) return;
+          if (!v.muted) {
+            this.unmute.classList.remove('show');
+            if (v.volume !== prefs.volume) { prefs.volume = v.volume; savePrefs(); }
+          }
+          updateVolumeUI();
+          this.updateLabel();
+        });
+        if (window.WebKitPlaybackTargetAvailabilityEvent) {
+          v.addEventListener('webkitplaybacktargetavailabilitychanged', e => {
+            if (this.index === 0) { airplayAvailable = e.availability === 'available'; updateNow(); }
+          });
+        }
+      }
+      get focused() { return this.index === focusIndex; }
+
+      setStatus(text, isError = false) {
+        if (!text) { this.status.classList.remove('show', 'error'); this.retry.hidden = true; return; }
+        this.statusText.textContent = text;
+        this.status.classList.add('show'); this.status.classList.toggle('error', isError);
+        this.retry.hidden = !isError;
+      }
+      stopVideo() {
+        clearTimeout(this.loadTimer);
+        this.unmute.classList.remove('show');
+        if (this.hls) { this.hls.destroy(); this.hls = null; }
+        const v = this.video;
+        v.onerror = null; v.pause(); v.removeAttribute('src'); v.load();
+      }
+      /** Stops everything in this tile (used when the layout shrinks). */
+      clear() {
+        this.stopVideo(); this.iframe.src = 'about:blank'; this.iframe.hidden = true; this.video.hidden = true;
+        this.ch = null; this.setStatus(null);
+      }
+      /** Applies sound focus: other tiles are always muted. */
+      applyAudio(soundMuted) {
+        const v = this.video;
+        v.controls = !isSplit();
+        if (!this.focused) { v.muted = true; this.unmute.classList.remove('show'); }
+        else { v.muted = soundMuted; v.volume = prefs.volume; }
+        this.el.classList.toggle('focused', this.focused);
+        this.updateLabel();
+      }
+      updateLabel() {
+        if (!this.ch) { this.label.textContent = ''; return; }
+        const embedNote = this.ch.type === 'embed' ? ' (השמע נשלט מנגן הערוץ)' : '';
+        const icon = this.ch.type === 'embed' ? '🔈' : (this.focused && !this.video.muted ? '🔊' : '🔇');
+        this.label.textContent = icon + ' ' + this.ch.name;
+        this.label.title = (this.focused ? 'הערוץ עם השמע' : 'הקישו להעברת השמע לכאן') + embedNote + ' · הקשה כפולה: צפייה במסך מלא';
+        this.label.setAttribute('aria-label', this.ch.name + (this.focused ? ', השמע פעיל' : ''));
+      }
+      tryPlay() {
+        clearTimeout(this.loadTimer);
+        const v = this.video;
+        v.volume = prefs.volume;
+        v.play().then(() => { this.setStatus(null); this.unmute.classList.toggle('show', this.focused && v.muted); })
+          .catch(() => {
+            // Autoplay with sound blocked (iOS always does this): play muted and offer an unmute button.
+            v.muted = true;
+            v.play().then(() => { this.setStatus(null); this.unmute.classList.toggle('show', this.focused); })
+              .catch(() => this.setStatus('הקישו על הנגן להפעלת השידור'));
+          });
+      }
+      failover(reason) {
+        const ch = this.ch;
+        if (!ch || ch.type !== 'hls') return;
+        if (this.urlIndex + 1 < ch.urls.length) {
+          this.urlIndex++;
+          this.startHls(ch.urls[this.urlIndex]);
+        } else {
+          this.stopVideo();
+          this.setStatus('השידור אינו זמין כרגע (' + reason + '). ייתכן שהוא חסום גאוגרפית.', true);
+          setOffline(ch.id, true);
+        }
+      }
+      startHls(url) {
+        const v = this.video;
+        this.stopVideo();
+        this.setStatus('טוען שידור...');
+        this.loadTimer = setTimeout(() => this.failover('timeout'), 15000);
+        if (v.canPlayType('application/vnd.apple.mpegurl') !== '') {
+          // Safari / iOS: native HLS (also works from file:// pages).
+          v.onerror = () => this.failover(v.error ? 'code ' + v.error.code : 'native');
+          v.addEventListener('loadedmetadata', () => this.tryPlay(), { once: true });
+          v.src = url; v.load();
+          return;
+        }
+        if (typeof Hls === 'undefined' || !Hls.isSupported()) {
+          clearTimeout(this.loadTimer);
+          this.setStatus('הדפדפן אינו תומך ב-HLS ו-hls.js לא נטען', true);
+          return;
+        }
+        let netRetries = 0;
+        // capLevelToPlayerSize: small split-screen tiles get a lower quality, saving bandwidth.
+        const hls = this.hls = new Hls({ enableWorker: true, backBufferLength: 60, liveDurationInfinity: true, capLevelToPlayerSize: true });
+        hls.loadSource(url); hls.attachMedia(v);
+        hls.on(Hls.Events.MANIFEST_PARSED, () => this.tryPlay());
+        hls.on(Hls.Events.ERROR, (_e, data) => {
+          if (!data.fatal) return;
+          if (data.type === Hls.ErrorTypes.NETWORK_ERROR && netRetries < 2 && data.details !== 'manifestLoadError') {
+            netRetries++; setTimeout(() => this.hls === hls && hls.startLoad(), 1000 * netRetries);
+          } else if (data.type === Hls.ErrorTypes.MEDIA_ERROR) {
+            hls.recoverMediaError();
+          } else {
+            this.failover(data.details + (data.response && data.response.code ? ' HTTP ' + data.response.code : ''));
+          }
+        });
+      }
+      load(ch) {
+        if (this.ch && this.ch.id !== ch.id) this.prevId = this.ch.id;
+        this.ch = ch; this.urlIndex = 0;
+        this.setStatus(null);
+        this.el.classList.toggle('embed', ch.type === 'embed');
+        if (ch.type === 'embed') {
+          this.stopVideo(); this.video.hidden = true; this.iframe.hidden = false; this.iframe.src = ch.embedUrl;
+        } else {
+          this.iframe.hidden = true; this.iframe.src = 'about:blank'; this.video.hidden = false;
+          this.startHls(ch.urls[0]);
+        }
+        this.updateLabel();
+      }
+      reload() {
+        if (!this.ch) return;
+        if (this.ch.type === 'embed') this.iframe.src = this.ch.embedUrl;
+        else { this.urlIndex = 0; this.startHls(this.ch.urls[0]); }
+      }
+    }
+
+    for (let i = 0; i < 4; i++) { const t = new Tile(i); tiles.push(t); grid.appendChild(t.el); }
+
+    /** Points `video`/`current` at the focused tile and applies sound focus to all tiles. */
+    function syncFocus(soundMuted = video ? video.muted : false) {
+      video = focusedTile().video;
+      current = focusedTile().ch;
+      tiles.forEach((t, i) => { t.el.hidden = i >= layout; if (i < layout) t.applyAudio(soundMuted); });
+    }
+
+    function play(id, { announce = false } = {}) {
+      const ch = byId.get(id);
+      if (!ch) return;
+      focusedTile().load(ch);
+      current = ch;
+      syncFocus();
+      afterChange();
+      if (announce) toast('▶ ' + ch.name);
+      saveSplit();
+    }
+    function afterChange() {
+      renderAll();
+      updateMediaSession();
+      if (current) document.title = current.name + ' · Channel Stream';
+      const active = document.querySelector('.favbtn.active');
+      if (active) active.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: 'smooth' });
+    }
+    function focusTile(i) {
+      if (i === focusIndex || i >= layout) return;
+      const soundMuted = video ? video.muted : false;   // the new tile inherits the mute state
+      focusIndex = i;
+      syncFocus(soundMuted);
+      if (focusedTile().ch && focusedTile().ch.type === 'embed') toast('את השמע של ' + focusedTile().ch.name + ' מפעילים בכפתור השמע של הנגן');
+      afterChange();
+    }
+    /** Double-click: show only this tile's channel. */
+    function expandTile(i) {
+      const ch = tiles[i].ch;
+      setLayout(1);
+      if (ch && i !== 0) play(ch.id);
+    }
+
+    /** Changes the number of tiles. New tiles get the last split-screen channels, or favorites not on screen. */
+    function setLayout(n, { remember = true } = {}) {
+      n = Math.max(1, Math.min(4, n));
+      if (n > 1 && !splitAllowed()) n = 1;
+      const old = layout;
+      const soundMuted = video ? video.muted : false;
+      if (remember) { prefs.layout = n; savePrefs(); }
+      if (n === old) { renderLayoutMenu(); return; }
+      layout = n;
+      grid.dataset.layout = n;
+      $('player').classList.toggle('split', n > 1);
+      if (n < old) {
+        tiles.slice(n).forEach(t => t.clear());
+        if (focusIndex >= n) focusIndex = 0;
+      } else {
+        const saved = Array.isArray(prefs.split) ? prefs.split : [];
+        for (let i = old; i < n; i++) {
+          const shown = new Set(tiles.slice(0, i).map(t => t.ch && t.ch.id));
+          const candidates = [saved[i], ...prefs.favorites, ...channels.map(c => c.id)];
+          const id = candidates.find(c => c && byId.has(c) && !shown.has(c) && !isOffline(c));
+          if (id) tiles[i].load(byId.get(id));
+        }
+      }
+      syncFocus(soundMuted);
+      saveSplit();
+      renderLayoutMenu();
+      afterChange();
+    }
+    function saveSplit() {
+      if (!isSplit()) return;
+      prefs.split = tiles.slice(0, layout).map(t => t.ch ? t.ch.id : '');
+      savePrefs();
+    }
+
+    function playPrevious() {
+      const prev = focusedTile().prevId;
+      if (prev && byId.has(prev)) play(prev, { announce: true });
+    }
+    function reload() { focusedTile().reload(); }
+    /** Next/previous favorite (or channel), skipping channels marked offline. */
+    function step(delta) {
+      const list = prefs.favorites.length ? prefs.favorites : channels.map(c => c.id);
+      let i = current ? list.indexOf(current.id) : -1;
+      for (let n = 0; n < list.length; n++) {
+        i = (i + delta + list.length) % list.length;
+        if (!isOffline(list[i])) break;
+      }
+      play(list[i], { announce: true });
+    }
+
+    // ---------- layout menu ----------
+    function renderLayoutMenu() {
+      $('layoutWrap').hidden = !splitAllowed();
+      const menu = $('layoutMenu');
+      menu.innerHTML = '';
+      LAYOUTS.forEach(l => {
+        const b = document.createElement('button');
+        b.type = 'button'; b.setAttribute('role', 'menuitemradio'); b.setAttribute('aria-checked', layout === l.n);
+        b.className = layout === l.n ? 'on' : '';
+        b.innerHTML = '<svg viewBox="0 0 22 16" fill="none" stroke="currentColor" stroke-width="1.6">' + l.icon + '</svg>';
+        b.append(l.name + (layout === l.n ? ' ✓' : ''));
+        b.addEventListener('click', () => { showLayoutMenu(false); setLayout(l.n); });
+        menu.appendChild(b);
+      });
+      $('layoutBtn').classList.toggle('pressed', isSplit());
+    }
+    function showLayoutMenu(show) {
+      $('layoutMenu').hidden = !show;
+      $('layoutBtn').setAttribute('aria-expanded', show);
+    }
+    $('layoutBtn').addEventListener('click', e => { e.stopPropagation(); showLayoutMenu($('layoutMenu').hidden); });
+    document.addEventListener('click', e => { if (!e.target.closest('#layoutWrap')) showLayoutMenu(false); });
+
+    // ---------- rendering ----------
+    function renderStrip() {
+      const strip = $('favstrip');
+      strip.innerHTML = '';
+      prefs.favorites.forEach((id, i) => {
+        const ch = byId.get(id);
+        const b = document.createElement('button');
+        b.type = 'button';
+        b.className = 'favbtn' + (current && current.id === id ? ' active' : '') + (isOffline(id) ? ' offline' : '');
+        b.title = ch.name + (i < 9 ? ' (' + (i + 1) + ')' : '') + (isOffline(id) ? ' — לא זמין כעת' : '');
+        b.setAttribute('aria-label', ch.name);
+        if (current && current.id === id) b.setAttribute('aria-current', 'true');
+        b.addEventListener('click', () => play(id));
+        b.appendChild(logo(ch, 50));
+        const nm = document.createElement('span'); nm.className = 'nm'; nm.textContent = ch.name; b.appendChild(nm);
+        if (i < 9) { const k = document.createElement('span'); k.className = 'key'; k.textContent = i + 1; b.appendChild(k); }
+        strip.appendChild(b);
+      });
+      const add = document.createElement('button');
+      add.type = 'button'; add.className = 'favbtn add'; add.title = 'הוספת ערוצים למועדפים';
+      add.innerHTML = '<span class="logo" style="width:50px;height:50px">+</span><span class="nm">הוספה</span>';
+      add.addEventListener('click', () => { openList(true); setTimeout(() => searchEl.focus({ preventScroll: true }), 250); });
+      strip.appendChild(add);
+      $('prevBtn').disabled = !(focusedTile().prevId && byId.has(focusedTile().prevId));
+    }
+
+    function rowFor(ch, { favIndex = -1 } = {}) {
+      const row = document.createElement('div');
+      row.className = 'row' + (current && current.id === ch.id ? ' active' : '') + (isOffline(ch.id) ? ' offline' : '');
+      row.setAttribute('role', 'button'); row.tabIndex = 0; row.title = 'צפייה ב-' + ch.name;
+      row.addEventListener('click', () => { play(ch.id); if (matchMedia('(max-width: 1099px)').matches) openList(false); });
+      row.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); play(ch.id); } });
+
+      const txt = document.createElement('div'); txt.className = 'row-text';
+      const nm = document.createElement('span'); nm.className = 'row-name'; nm.textContent = ch.name;
+      const sb = document.createElement('span'); sb.className = 'row-sub';
+      sb.textContent = isOffline(ch.id) ? 'לא זמין כעת · ' + ch.nameEn : [ch.nameEn, LANG[ch.lang]].filter(Boolean).join(' · ');
+      txt.append(nm, sb);
+      row.append(logo(ch, 38), txt);
+
+      if (prefs.defaultChannel === ch.id) {
+        const s = document.createElement('span'); s.className = 'row-star'; s.textContent = '★'; s.title = 'ערוץ ברירת המחדל';
+        row.appendChild(s);
+      }
+      const btn = (text, label, onClick, cls = '', disabled = false) => {
+        const b = document.createElement('button');
+        b.type = 'button'; b.className = 'row-btn ' + cls; b.textContent = text; b.title = label;
+        b.setAttribute('aria-label', label + ' – ' + ch.name); b.disabled = disabled;
+        b.addEventListener('click', e => { e.stopPropagation(); onClick(); });
+        return b;
+      };
+      if (favIndex >= 0) {
+        // RTL: "↑" moves earlier in the bar (further right), "↓" later.
+        row.append(
+          btn('↑', 'הזזה קדימה', () => moveFav(favIndex, -1), '', favIndex === 0),
+          btn('↓', 'הזזה אחורה', () => moveFav(favIndex, 1), '', favIndex === prefs.favorites.length - 1),
+          btn('✕', 'הסרה מהמועדפים', () => removeFav(ch.id), 'danger'));
+      } else {
+        if (ch.custom) row.appendChild(btn('🗑', 'מחיקת הערוץ', () => deleteCustom(ch.id), 'danger'));
+        row.appendChild(btn('+ מועדפים', 'הוספה למועדפים', () => addFav(ch.id)));
+      }
+      return row;
+    }
+
+    function renderList() {
+      if (listEl.hidden) return;
+      const favList = $('favList');
+      favList.innerHTML = '';
+      $('favCount').textContent = '(' + prefs.favorites.length + ')';
+      if (!prefs.favorites.length) favList.innerHTML = '<div class="empty">אין מועדפים. הוסיפו מהרשימה למטה.</div>';
+      prefs.favorites.forEach((id, i) => favList.appendChild(rowFor(byId.get(id), { favIndex: i })));
+
+      const chips = $('chips');
+      chips.innerHTML = '';
+      [{ id: 'all', name: 'הכל' }, ...groups()].forEach(g => {
+        const c = document.createElement('button');
+        c.type = 'button'; c.className = 'chip' + (prefs.group === g.id ? ' on' : ''); c.textContent = g.name;
+        c.setAttribute('aria-pressed', prefs.group === g.id);
+        c.addEventListener('click', () => { prefs.group = g.id; savePrefs(); renderList(); });
+        chips.appendChild(c);
+      });
+
+      const q = searchEl.value.trim().toLowerCase();
+      const others = channels.filter(ch => !prefs.favorites.includes(ch.id));
+      const list = others.filter(ch =>
+        (prefs.group === 'all' || ch.group === prefs.group) &&
+        (!q || [ch.name, ch.nameEn, ch.short, LANG[ch.lang]].join(' ').toLowerCase().includes(q)));
+      $('othersCount').textContent = '(' + others.length + ')';
+      const box = $('others');
+      box.innerHTML = '';
+      if (!list.length) { box.innerHTML = '<div class="empty">' + (q ? 'לא נמצאו ערוצים' : 'כל הערוצים כבר במועדפים 🎉') + '</div>'; }
+      groups().forEach(g => {
+        const inGroup = list.filter(ch => ch.group === g.id);
+        if (!inGroup.length) return;
+        const gt = document.createElement('div'); gt.className = 'group-title'; gt.textContent = g.name;
+        box.appendChild(gt);
+        inGroup.forEach(ch => box.appendChild(rowFor(ch)));
+      });
+    }
+
+    function updateNow() {
+      const ch = current;
+      if (!ch) return;
+      $('nowLogo').replaceChildren(logo(ch, 44));
+      $('nowName').textContent = ch.name;
+      const src = ch.type === 'embed' ? 'נגן הטמעה רשמי (Mako)' : 'HLS · ' + new URL(ch.urls[focusedTile().urlIndex] || ch.urls[0]).host;
+      $('nowSrc').textContent = [ch.nameEn, LANG[ch.lang], src].filter(Boolean).join(' · ');
+      const isFav = prefs.favorites.includes(ch.id);
+      $('favBtn').classList.toggle('fav-on', isFav);
+      $('favLbl').textContent = isFav ? 'במועדפים' : 'למועדפים';
+      const isDef = prefs.defaultChannel === ch.id;
+      $('defaultBtn').classList.toggle('on', isDef);
+      $('defaultLbl').textContent = isDef ? 'ערוץ ברירת המחדל' : 'קבע כברירת מחדל';
+      $('pipBtn').hidden = !(ch.type === 'hls' && pipSupported());
+      $('airplayBtn').hidden = !(ch.type === 'hls' && airplayAvailable);
+      if (typeof updateVolumeUI === 'function') updateVolumeUI();
+    }
+
+    function renderAll() { renderStrip(); renderList(); updateNow(); }
+
+    // ---------- favorites & list panel ----------
+    function addFav(id) {
+      if (prefs.favorites.includes(id)) return;
+      prefs.favorites.push(id); savePrefs();
+      toast('נוסף למועדפים: ' + byId.get(id).name); renderAll();
+    }
+    function removeFav(id) {
+      prefs.favorites = prefs.favorites.filter(x => x !== id); savePrefs();
+      toast('הוסר מהמועדפים: ' + byId.get(id).name); renderAll();
+    }
+    function moveFav(i, delta) {
+      const j = i + delta, f = prefs.favorites;
+      if (j < 0 || j >= f.length) return;
+      [f[i], f[j]] = [f[j], f[i]]; savePrefs(); renderAll();
+    }
+    function openList(open) {
+      listEl.hidden = !open;
+      app.classList.toggle('list-open', open);
+      $('scrim').hidden = !open || !matchMedia('(max-width: 1099px)').matches;
+      $('listBtn').classList.toggle('pressed', open);
+      $('listBtn').setAttribute('aria-expanded', open);
+      prefs.listOpen = open && matchMedia('(min-width: 1100px)').matches; savePrefs();
+      if (open) { renderList(); $('catalogUrl').value = prefs.catalogUrl; }
+    }
+
+    // ---------- custom channels ----------
+    const dialog = $('addDialog');
+    $('addChannelBtn').addEventListener('click', () => {
+      $('addName').value = ''; $('addUrl').value = ''; $('addErr').textContent = '';
+      dialog.showModal(); $('addName').focus();
+    });
+    $('addForm').addEventListener('submit', e => {
+      if (e.submitter && e.submitter.value === 'cancel') return;
+      const name = $('addName').value.trim();
+      let url;
+      try { url = new URL($('addUrl').value.trim()); } catch { url = null; }
+      if (!name || !url || !/^https?:$/.test(url.protocol)) {
+        e.preventDefault();
+        $('addErr').textContent = 'יש להזין שם וכתובת http(s) תקינה של שידור, למשל ‎https://example.com/live.m3u8';
+        return;
+      }
+      const id = 'custom-' + Date.now().toString(36);
+      prefs.custom.push({ id, name, url: url.href });
+      prefs.favorites.push(id);
+      savePrefs(); rebuild();
+      play(id, { announce: true });
+    });
+    function deleteCustom(id) {
+      if (!confirm('למחוק את הערוץ "' + byId.get(id).name + '"?')) return;
+      prefs.custom = prefs.custom.filter(c => c.id !== id);
+      prefs.favorites = prefs.favorites.filter(x => x !== id);
+      savePrefs(); rebuild();
+      tiles.forEach((t, i) => { if (i !== focusIndex && t.ch && t.ch.id === id) t.load(byId.get(prefs.defaultChannel)); });
+      if (current && current.id === id) play(prefs.defaultChannel); else renderAll();
+    }
+
+    // ---------- online channel list ----------
+    async function refreshCatalog({ manual = false } = {}) {
+      const status = $('catalogStatus');
+      const url = prefs.catalogUrl.trim();
+      if (!url) { status.textContent = 'עדכונים מקוונים כבויים.'; return; }
+      status.textContent = 'בודק אם יש רשימת ערוצים חדשה…';
+      try {
+        const res = await fetch(url, { cache: 'no-store' });
+        if (!res.ok) throw new Error('HTTP ' + res.status);
+        const remote = await res.json();
+        if (!isUsable(remote)) throw new Error('הרשימה אינה תקינה');
+        if (remote.version <= CAT.version) {
+          status.textContent = 'רשימת הערוצים עדכנית (גרסה ' + CAT.version + ').';
+          if (manual) toast('רשימת הערוצים עדכנית');
+          return;
+        }
+        const base = new URL('.', new URL(url, location.href)).href;
+        try { localStorage.setItem(CACHE_KEY, JSON.stringify({ catalog: remote, base })); } catch { /* ignore */ }
+        CAT = remote; catalogBase = base;
+        rebuild(); savePrefs(); renderAll();
+        status.textContent = 'עודכן לגרסה ' + remote.version + '.';
+        toast('רשימת הערוצים עודכנה');
+      } catch (e) {
+        status.textContent = 'בדיקת העדכון נכשלה (' + e.message + '). משתמשים ברשימה הקיימת (גרסה ' + CAT.version + ').';
+      }
+    }
+    // ---------- PiP / AirPlay / fullscreen ----------
+    function pipSupported() {
+      return (document.pictureInPictureEnabled && !video.disablePictureInPicture) || typeof video.webkitSetPresentationMode === 'function';
+    }
+    async function togglePip() {
+      if (!current || current.type !== 'hls') { toast('PiP זמין דרך נגן הערוץ עצמו'); return; }
+      try {
+        if (document.pictureInPictureElement) await document.exitPictureInPicture();
+        else if (video.requestPictureInPicture) await video.requestPictureInPicture();
+        else if (video.webkitSetPresentationMode) video.webkitSetPresentationMode(video.webkitPresentationMode === 'picture-in-picture' ? 'inline' : 'picture-in-picture');
+      } catch (e) { toast('לא ניתן להפעיל PiP: ' + e.message); }
+    }
+    function toggleFullscreen() {
+      const target = isSplit() || (current && current.type === 'embed') ? $('player') : video;
+      const fsEl = document.fullscreenElement || document.webkitFullscreenElement;
+      if (fsEl) { (document.exitFullscreen || document.webkitExitFullscreen).call(document); return; }
+      if (target.requestFullscreen) target.requestFullscreen().catch(() => {});
+      else if (target.webkitRequestFullscreen) target.webkitRequestFullscreen();
+      else if (video.webkitEnterFullscreen && target === video) video.webkitEnterFullscreen(); // iPhone
+    }
+
+    // ---------- mute & volume ----------
+    // iOS ignores video.volume (hardware buttons only), so the slider is hidden there.
+    const canSetVolume = (() => { const v = document.createElement('video'); v.volume = 0.5; return v.volume === 0.5; })();
+    const volEl = $('volume');
+    volEl.hidden = !canSetVolume;
+    function updateVolumeUI() {
+      const hlsCh = current && current.type === 'hls';
+      const muted = !hlsCh ? false : (video.muted || video.volume === 0);
+      $('muteBtn').disabled = !hlsCh;
+      $('muteBtn').title = hlsCh ? (muted ? 'ביטול השתקה (M)' : 'השתקה (M)') : 'השמע נשלט מנגן הערוץ עצמו';
+      $('muteBtn').classList.toggle('muted', muted);
+      $('muteBtn').setAttribute('aria-pressed', muted);
+      $('muteX').hidden = !muted; $('muteWaves').style.display = muted ? 'none' : '';
+      volEl.disabled = !hlsCh;
+      volEl.value = video.muted ? 0 : prefs.volume;
+    }
+    function toggleMute() {
+      if (!current || current.type !== 'hls') { toast('השמע של ערוץ זה נשלט מנגן הערוץ'); return; }
+      video.muted = !video.muted;
+      if (!video.muted && video.volume === 0) video.volume = prefs.volume = 0.5;
+      focusedTile().unmute.classList.remove('show');
+      toast(video.muted ? '🔇 מושתק' : '🔊 שמע פעיל');
+    }
+    function setVolume(v) {
+      if (!current || current.type !== 'hls') return;
+      v = Math.min(1, Math.max(0, Math.round(v * 20) / 20));
+      video.volume = v; video.muted = v === 0;
+      if (v > 0) { prefs.volume = v; savePrefs(); }
+    }
+    volEl.addEventListener('input', () => setVolume(Number(volEl.value)));
+    $('muteBtn').addEventListener('click', toggleMute);
+
+    // ---------- Media Session (lock screen / Control Center / media keys) ----------
+    function updateMediaSession() {
+      if (!('mediaSession' in navigator) || !current) return;
+      try {
+        const art = logoURL(current) || 'assets/icon-512.png';
+        navigator.mediaSession.metadata = new MediaMetadata({
+          title: current.name, artist: 'שידור חי · ' + current.nameEn, album: 'Channel Stream',
+          // Artwork must be http(s); skip it when the page is opened as file://.
+          artwork: /^https?:$/.test(location.protocol) ? [{ src: new URL(art, location.href).href, sizes: '256x256', type: 'image/png' }] : []
+        });
+        navigator.mediaSession.setActionHandler('nexttrack', () => step(1));
+        navigator.mediaSession.setActionHandler('previoustrack', () => step(-1));
+        navigator.mediaSession.setActionHandler('play', () => video.play());
+        navigator.mediaSession.setActionHandler('pause', () => video.pause());
+      } catch { /* some actions unsupported */ }
+    }
+
+    // ---------- events ----------
+    $('reloadBtn').addEventListener('click', reload);
+    $('prevBtn').addEventListener('click', playPrevious);
+    $('listBtn').addEventListener('click', () => openList(listEl.hidden));
+    $('closeListBtn').addEventListener('click', () => openList(false));
+    $('scrim').addEventListener('click', () => openList(false));
+    $('pipBtn').addEventListener('click', togglePip);
+    $('airplayBtn').addEventListener('click', () => video.webkitShowPlaybackTargetPicker && video.webkitShowPlaybackTargetPicker());
+    $('fsBtn').addEventListener('click', toggleFullscreen);
+    $('favBtn').addEventListener('click', () => { if (current) (prefs.favorites.includes(current.id) ? removeFav : addFav)(current.id); });
+    $('defaultBtn').addEventListener('click', () => {
+      if (!current) return;
+      prefs.defaultChannel = current.id; savePrefs();
+      toast('★ ' + current.name + ' יופעל בפתיחת הדף'); renderAll();
+    });
+    $('resetBtn').addEventListener('click', () => {
+      if (!confirm('לאפס את המועדפים וערוץ ברירת המחדל? ערוצים שהוספתם יישמרו.')) return;
+      prefs.favorites = [...CAT.defaultFavorites]; prefs.defaultChannel = CAT.defaultChannel; prefs.group = 'all';
+      savePrefs(); setLayout(1); play(prefs.defaultChannel, { announce: true });
+    });
+    $('catalogUrl').addEventListener('change', e => { prefs.catalogUrl = e.target.value.trim(); savePrefs(); });
+    $('catalogCheckBtn').addEventListener('click', () => {
+      prefs.catalogUrl = $('catalogUrl').value.trim(); savePrefs(); refreshCatalog({ manual: true });
+    });
+    searchEl.addEventListener('input', renderList);
+    window.addEventListener('resize', () => {
+      if (!listEl.hidden) $('scrim').hidden = !matchMedia('(max-width: 1099px)').matches;
+      if (isSplit() && !splitAllowed()) setLayout(1, { remember: false });
+      renderLayoutMenu();
+    });
+
+    document.addEventListener('keydown', e => {
+      if (e.altKey && !e.metaKey && !e.ctrlKey && /^Digit[1-4]$/.test(e.code)) { e.preventDefault(); setLayout(Number(e.code.slice(5))); return; }
+      if (e.metaKey || e.ctrlKey || e.altKey || dialog.open) return;
+      if (e.target.closest('input, textarea')) {
+        if (e.key === 'Escape') { searchEl.value = ''; renderList(); e.target.blur(); }
+        return;
+      }
+      const k = e.key.toLowerCase();
+      if (/^[1-9]$/.test(k)) { const id = prefs.favorites[Number(k) - 1]; if (id) play(id, { announce: true }); }
+      else if (k === '0' || k === 'backspace') { e.preventDefault(); playPrevious(); }
+      else if (k === 'arrowright') step(-1);      // RTL: right = previous
+      else if (k === 'arrowleft') step(1);        // RTL: left = next
+      else if (k === ' ' && current && current.type === 'hls') { e.preventDefault(); video.paused ? video.play() : video.pause(); }
+      else if (k === 'm') toggleMute();
+      else if (k === 'arrowup' && current && current.type === 'hls') { e.preventDefault(); setVolume(video.volume + 0.1); }
+      else if (k === 'arrowdown' && current && current.type === 'hls') { e.preventDefault(); setVolume(video.volume - 0.1); }
+      else if (k === 'f') toggleFullscreen();
+      else if (k === 'p') togglePip();
+      else if (k === 'r') reload();
+      else if (k === 'l') openList(listEl.hidden);
+      else if (k === 'escape' && !$('layoutMenu').hidden) showLayoutMenu(false);
+      else if (k === 'escape' && !listEl.hidden) openList(false);
+      else if (k === '/') { e.preventDefault(); openList(true); searchEl.focus(); }
+    });
+
+    // ---------- start: the default channel plays right away ----------
+    rebuild();
+    savePrefs();
+    // ?ch=<id> opens a specific channel once (bookmark/deep link) without changing the saved default.
+    const linked = new URLSearchParams(location.search).get('ch');
+    if (prefs.listOpen && matchMedia('(min-width: 1100px)').matches) openList(true);
+    // Launch is always simple: one channel. The layout menu brings back the last split-screen channels.
+    syncFocus();
+    renderLayoutMenu();
+    play(byId.has(linked) ? linked : prefs.defaultChannel);
+    // ?layout=2|3|4 opens split screen once (on wide screens).
+    const linkedLayout = Number(new URLSearchParams(location.search).get('layout'));
+    if (linkedLayout >= 2 && linkedLayout <= 4) setLayout(linkedLayout, { remember: false });
+    refreshCatalog();
+  })();
+  </script>
+</body>
+</html>
